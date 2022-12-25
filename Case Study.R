@@ -4,6 +4,7 @@ library(ggplot2)
 library(readr)
 library(pheatmap)
 library(tidyr)
+library(purrr)
 
 # load data
 all_comps = read_csv('all_comps.csv')
@@ -116,10 +117,28 @@ finalsSkyFlyingHill = mergedData %>%
   filter(round == "final round") %>%
   filter(type == "Sky Flying Hill")
 
-finalsSkyFlyingHill %>%
-  group_by(season) %>%
-  group_by(name) %>%
-  summarise() %>%
-  ungroup() %>%
+test = finalsSkyFlyingHill[c("season", "name")] %>%
+  distinct()
+test
+
+
+n_final_rounds = finalsSkyFlyingHill %>%
+  group_by(name, season) %>%
+  summarise(n_final_rounds = n()) %>%
   ungroup()
-finalsSkyFlyingHill
+n_final_rounds
+
+n_final_rounds_sum = n_final_rounds %>%
+  group_by(name) %>%
+  mutate(sum = sum(n_final_rounds)) %>%
+  ungroup() %>%
+  distinct_at(vars(name, sum))
+
+select_if(mergedData, n_final_rounds_sum$sum[mergedData$name] > 5) %>%
+  select_if()
+
+
+test1 = lmap(test, calcSeasonSum)
+test1
+
+add_column(test, test1)
