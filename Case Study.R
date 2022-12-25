@@ -19,7 +19,7 @@ all_comps$type[all_comps$hill_size_x < 50] = "Small Hill"
 all_comps$type[all_comps$hill_size_x %in%  c(50:84)] = "Medium Hill"
 all_comps$type[all_comps$hill_size_x %in%  c(85:109)] = "Normal Hill"
 all_comps$type[all_comps$hill_size_x %in%  c(110:189)] = "Large Hill"
-all_comps$type[all_comps$hill_size_x > 189] = "Sky Flying Hill"
+all_comps$type[all_comps$hill_size_x > 189] = "Ski Flying Hill"
 
 # merge datasets
 mergedData = merge(all_comps, skiresults, by = "id")
@@ -106,39 +106,49 @@ for (group in interesting_groups) {
   }
 }
 
-#Reduce the data such that it only contains information about the final rounds on a ski flying hill.
-#• Add a variable n_final_rounds to the data set, which provides per pair of athlete and season the number of final
-#rounds (on a ski flying hill) that he/she participated in.
-#• For each athlete, who participated in at least 5 final rounds on a ski flying hill, compute the median amount of
-#note_points across all competitions per season.
-#• Based on the previously computed aggregated note points, produce a tibble that provides the names of the
-#best and worst athlete(s) per season.
-finalsSkyFlyingHill = mergedData %>%
+# -- Task --
+# a) Reduce the data such that it only contains information about the final rounds on a ski flying hill.
+# b) Add a variable n_final_rounds to the data set, which provides per pair of athlete and season
+#    the number of final rounds (on a ski flying hill) that he/she participated in.
+# c) For each athlete, who participated in at least 5 final rounds on a ski flying hill,
+#    compute the median amount of note_points across all competitions per season.
+# d) Based on the previously computed aggregated note points, produce a tibble that provides the
+#    names of the best and worst athlete(s) per season.
+
+# Task a)
+final_ski_flying = mergedData %>%
   filter(round == "final round") %>%
-  filter(type == "Sky Flying Hill")
+  filter(type == "Ski Flying Hill")
+final_ski_flying
 
-test = finalsSkyFlyingHill[c("season", "name")] %>%
-  distinct()
-test
-
-
-n_final_rounds = finalsSkyFlyingHill %>%
-  group_by(name, season) %>%
-  summarise(n_final_rounds = n()) %>%
+# Task b)
+participated_final_rounds = final_ski_flying %>% group_by(name, season) %>%
+  mutate(n_final_rounds = n()) %>% # added variable for rounds per season
   ungroup()
-n_final_rounds
+participated_final_rounds
 
-n_final_rounds_sum = n_final_rounds %>%
-  group_by(name) %>%
-  mutate(sum = sum(n_final_rounds)) %>%
+# Task c)
+median_note_points = participated_final_rounds %>% group_by(name) %>%
+  mutate(n_final_rounds_overall = sum(n_final_rounds)) %>% # this sum is independent of the season
   ungroup() %>%
-  distinct_at(vars(name, sum))
+  filter(n_final_rounds_overall >= 5) %>%
+  group_by(name, season) %>%
+  mutate(median_note_points = median(note_points)) %>%
+  ungroup() %>%
+  distinct(name, season, median_note_points)
+median_note_points
 
-select_if(mergedData, n_final_rounds_sum$sum[mergedData$name] > 5) %>%
-  select_if()
-
-
-test1 = lmap(test, calcSeasonSum)
-test1
-
-add_column(test, test1)
+# Task d)
+best_and_worst = median_note_points %>%
+  group_by(season) %>%
+  mutate(rank = rank(median_note_points, ties.method = "min")) %>%
+  filter(rank == 1 | rank == max(rank)) %>%
+  mutate(rankname = if_else(rank == 1, "worst", "best")) %>%
+  select(season, rankname, name) %>%
+  pivot_wider(
+    names_from = rankname,
+    values_from = name,
+    values_fn = function(x)
+      paste(x, collapse = ", ") # multiple athletes per year possible --> concat
+  )
+best_and_worst
