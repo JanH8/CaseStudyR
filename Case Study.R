@@ -6,9 +6,10 @@ library(pheatmap)
 library(tidyr)
 library(purrr)
 
+
 # load data
-all_comps = read_csv('all_comps.csv')
-skiresults = read_csv('skiresults.csv')
+all_comps = read_csv("all_comps.csv")
+skiresults = read_csv("skiresults.csv")
 
 # subset with only the columns requested in the task
 all_comps_compact = all_comps[c("id", "season", "gender", "hill_size_x")]
@@ -22,32 +23,38 @@ all_comps$type[all_comps$hill_size_x %in%  c(110:189)] = "Large Hill"
 all_comps$type[all_comps$hill_size_x > 189] = "Ski Flying Hill"
 
 # merge datasets
-mergedData = merge(all_comps, skiresults, by = "id")
-mergedData_numeric = select_if(mergedData, is.numeric)
-summary(mergedData)
+merged_data = merge(all_comps, skiresults, by = "id")
+merged_data_numeric = select_if(merged_data, is.numeric)
+summary(merged_data)
 
-# todo: check where correlation makes sense
-correlation = round(cor(select_if(mergedData, is.numeric), method = "spearman"), 2)
+# calculate correlations
+correlation = round(cor(
+  select_if(merged_data, is.numeric),
+  use = "pairwise.complete.obs",
+  method = "spearman"
+),
+2)
 correlation = as.data.frame(correlation)
-correlation = correlation[-c(6, 7, 8), -c(6, 7, 8)] # removed this rows and colums because there was only NA in it
+correlation = correlation[-c(8), -c(8)] # removed this rows and colums because there was only NA in it
 
-# generating a heatmap for the correlation
+# produce a heatmap for the correlation
 pheatmap(
   correlation,
   display_numbers = TRUE,
   main = "correlation heatmap",
   treeheight_row = 0,
-  treeheight_col = 0,
+  treeheight_col = 0
 )
 
-# see distributions per variable
-for (name in names(select_if(mergedData, is.numeric))) {
-  data = as.matrix(select_if(mergedData, is.numeric)[name])
+# produce distributions per variable
+for (name in names(select_if(merged_data, is.numeric))) {
+  data = as.matrix(select_if(merged_data, is.numeric)[name])
   par(mfrow = c(1, 3))
   plot.ecdf(data, main = paste(name, "ecdf", " "))
   boxplot(data, main = paste(name, "boxplot", " "))
   hist(data, main = paste(name, "histogram", " "))
 }
+
 
 # define function to draw boxplots by groups
 draw_grouped_boxplot = function(data, group_by_column, data_column) {
@@ -66,24 +73,28 @@ draw_grouped_boxplot = function(data, group_by_column, data_column) {
   
   # calculate quantiles and setup coords
   grouped_by_quantiles = data %>%
-    group_by(get(group_by_column)) %>%
+    group_by_at(group_by_column) %>%
     summarise(
       q25 = quantile(get(data_column), probs = .25, na.rm = TRUE),
       q75 = quantile(get(data_column), probs = .75, na.rm = TRUE)
     )
   
+  # calculate means per group
+  means = data %>%
+    group_by_at(group_by_column) %>%
+    summarise_if(is.numeric, mean) %>%
+    ungroup()
+  
+  # set coordinates to make sure the diagramms fit to the space
   coords = coord_cartesian(ylim = c(
     min(grouped_by_quantiles$q25),
     max(grouped_by_quantiles$q75)
   ))
   
-  # calculate means per group
-  means = data %>%
-    group_by(get(group_by_column)) %>%
-    summarise_all(mean)
+  # draw means as points
+  points = geom_point(data = means, aesthetics, group = group_by_column)
   
-  points = geom_point(data = means, aesthetics)
-  
+  # add some labels
   labels = labs(
     title = paste(data_column, "by", group_by_column, sep = " "),
     subtitle = "median, upper and lower quartile, mean",
@@ -91,18 +102,18 @@ draw_grouped_boxplot = function(data, group_by_column, data_column) {
     y = data_column
   )
   
-  # build and return plot
+  # construct and return plot
   plot =  plot + boxplot + coords + points + labels
   return(plot)
 }
 
 # define for which groups the boxplots should be drawn
-interesting_groups = c("round", "gender", "season")
+interesting_groups = c("round")
 # iterate over groups and numeric values
 for (group in interesting_groups) {
-  for (name in names(select_if(mergedData, is.numeric))) {
+  for (name in names(select_if(merged_data, is.numeric))) {
     print(name)
-    print(draw_grouped_boxplot(mergedData, group, name))
+    print(draw_grouped_boxplot(merged_data, group, name))
   }
 }
 
@@ -116,7 +127,7 @@ for (group in interesting_groups) {
 #    names of the best and worst athlete(s) per season.
 
 # Task a)
-final_ski_flying = mergedData %>%
+final_ski_flying = merged_data %>%
   filter(round == "final round") %>%
   filter(type == "Ski Flying Hill")
 final_ski_flying
@@ -144,11 +155,12 @@ best_and_worst = median_note_points %>%
   mutate(rank = rank(median_note_points, ties.method = "min")) %>%
   filter(rank == 1 | rank == max(rank)) %>%
   mutate(rankname = if_else(rank == 1, "worst", "best")) %>%
-  select(season, rankname, name) %>%
+  select(season, rankname, name, median_note_points) %>%
   pivot_wider(
     names_from = rankname,
     values_from = name,
-    values_fn = function(x)
-      paste(x, collapse = ", ") # multiple athletes per year possible --> concat
+    values_fn = function(x) {
+      paste(x, collapse = ", ")
+    } # multiple athletes per year possible --> concat
   )
 best_and_worst
